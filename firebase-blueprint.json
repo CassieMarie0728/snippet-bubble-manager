@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Snippet": {
+      "title": "Snippet",
+      "description": "A code snippet stored by the user.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the snippet."
+        },
+        "code": {
+          "type": "string",
+          "description": "The actual code content."
+        },
+        "language": {
+          "type": "string",
+          "description": "The programming language of the snippet."
+        },
+        "description": {
+          "type": "string",
+          "description": "A short description of the snippet."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tags associated with the snippet."
+        },
+        "isFavorite": {
+          "type": "boolean",
+          "description": "Whether the snippet is marked as favorite."
+        },
+        "isPinned": {
+          "type": "boolean",
+          "description": "Whether the snippet is pinned to the top."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The UID of the user who owns this snippet."
+        },
+        "lastCopiedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the snippet was last copied."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the snippet was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the snippet was last updated."
+        }
+      },
+      "required": ["title", "code", "ownerId", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "snippets": {
+      "schema": "Snippet",
+      "description": "Collection of code snippets."
+    }
+  }
+}
