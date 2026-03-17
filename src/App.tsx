@@ -20,7 +20,9 @@ import {
   ChevronRight,
   ChevronDown,
   MoreVertical,
-  Layout
+  Layout,
+  Download,
+  Upload
 } from 'lucide-react';
 import { 
   collection, 
@@ -294,6 +296,61 @@ export default function App() {
 
   // Bubble Drag Logic
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const exportSnippets = () => {
+    const dataStr = JSON.stringify(snippets, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `snippets-export-${new Date().toISOString().split('T')[0]}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const importSnippets = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        const importedData = JSON.parse(content);
+        
+        if (!Array.isArray(importedData)) {
+          throw new Error('Invalid format: Expected an array of snippets');
+        }
+
+        let count = 0;
+        for (const item of importedData) {
+          const { id, createdAt, updatedAt, ...snippetData } = item;
+          
+          if (snippetData.title && snippetData.code) {
+            const now = new Date().toISOString();
+            await addDoc(collection(db, 'snippets'), {
+              ...snippetData,
+              ownerId: user.uid,
+              createdAt: now,
+              updatedAt: now,
+              isPinned: snippetData.isPinned || false,
+              isFavorite: snippetData.isFavorite || false,
+              tags: Array.isArray(snippetData.tags) ? snippetData.tags : []
+            });
+            count++;
+          }
+        }
+        alert(`Successfully imported ${count} snippets!`);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'snippets');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     setIsDragging(true);
   };
@@ -385,6 +442,27 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={importSnippets} 
+              accept=".json" 
+              className="hidden" 
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-zinc-500 hover:text-brand transition-colors flex items-center gap-2"
+              title="Import Snippets"
+            >
+              <Upload className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={exportSnippets}
+              className="p-2 text-zinc-500 hover:text-brand transition-colors flex items-center gap-2"
+              title="Export Snippets"
+            >
+              <Download className="w-5 h-5" />
+            </button>
             <button 
               onClick={() => setIsAddModalOpen(true)}
               className="px-4 py-2 bg-brand text-white font-semibold rounded-xl hover:bg-brand-hover transition-colors flex items-center gap-2"
