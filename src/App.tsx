@@ -382,17 +382,22 @@ export default function App() {
   const saveSnippet = async (snippetData: Partial<Snippet>) => {
     if (!user) return;
 
+    // Clean undefined values for Firestore
+    const cleanData = Object.fromEntries(
+      Object.entries(snippetData).filter(([_, v]) => v !== undefined)
+    );
+
     const now = new Date().toISOString();
     try {
       if (editingSnippet?.id) {
         const docRef = doc(db, 'snippets', editingSnippet.id);
         await updateDoc(docRef, {
-          ...snippetData,
+          ...cleanData,
           updatedAt: now
         });
       } else {
         await addDoc(collection(db, 'snippets'), {
-          ...snippetData,
+          ...cleanData,
           ownerId: user.uid,
           createdAt: now,
           updatedAt: now,
@@ -1073,7 +1078,7 @@ export default function App() {
                     tags: (formData.get('tags') as string).split(',').map(t => t.trim()).filter(Boolean),
                     isPinned: editingSnippet?.isPinned || false,
                     isFavorite: editingSnippet?.isFavorite || false,
-                    folderId: formData.get('folderId') as string || undefined,
+                    folderId: formData.get('folderId') as string || null,
                   });
                 }}
                 className="p-8 space-y-6"
