@@ -22,8 +22,16 @@ import {
   MoreVertical,
   Layout,
   Download,
-  Upload
+  Upload,
+  Folder as FolderIcon,
+  FolderPlus,
+  FolderOpen,
+  Sparkles,
+  Wand2,
+  Settings2,
+  RefreshCw
 } from 'lucide-react';
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   collection, 
   query, 
@@ -50,7 +58,7 @@ import { twMerge } from 'tailwind-merge';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { db, auth } from './firebase';
-import { Snippet } from './types';
+import { Snippet, Folder } from './types';
 
 // Popular languages for the dropdown
 const POPULAR_LANGUAGES = [
@@ -132,7 +140,15 @@ export default function App() {
   const [bubblePos, setBubblePos] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'pinned' | 'favorites'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pinned' | 'favorites' | 'folder'>('all');
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [indentSize, setIndentSize] = useState<2 | 4>(2);
+  const [braceStyle, setBraceStyle] = useState<'same-line' | 'next-line'>('same-line');
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Auth Listener
   useEffect(() => {
@@ -184,6 +200,32 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // Fetch Folders
+  useEffect(() => {
+    if (!user) {
+      setFolders([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'folders'),
+      where('ownerId', '==', user.uid),
+      orderBy('name', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Folder[];
+      setFolders(docs);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'folders');
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
   // Auth Handlers
   const handleLogin = async () => {
     try {
@@ -199,6 +241,140 @@ export default function App() {
       await signOut(auth);
     } catch (error) {
       console.error('Logout failed:', error);
+    }
+  };
+
+  const saveFolder = async (name: string) => {
+    if (!user) return;
+    const now = new Date().toISOString();
+    try {
+      await addDoc(collection(db, 'folders'), {
+        name,
+        ownerId: user.uid,
+        createdAt: now,
+        updatedAt: now
+      });
+      setIsFolderModalOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'folders');
+    }
+  };
+
+  const deleteFolder = async (id: string) => {
+    try {
+      // First, unassign snippets from this folder
+      const snippetsInFolder = snippets.filter(s => s.folderId === id);
+      for (const s of snippetsInFolder) {
+        await updateDoc(doc(db, 'snippets', s.id!), { folderId: null });
+      }
+      await deleteDoc(doc(db, 'folders', id));
+      if (selectedFolderId === id) {
+        setSelectedFolderId(null);
+        setActiveTab('all');
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `folders/${id}`);
+    }
+  };
+
+  const generateWithAI = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Generate a code snippet for: ${aiPrompt}. 
+        Return ONLY a JSON object with "code", "language", and "title" fields. 
+        The "language" should be a lowercase string (e.g., "javascript", "python").
+        The "title" should be a short, descriptive title for the snippet.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              code: { type: Type.STRING },
+              language: { type: Type.STRING },
+              title: { type: Type.STRING }
+            },
+            required: ["code", "language", "title"]
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text);
+      
+      if (formRef.current) {
+        const titleInput = formRef.current.querySelector('input[name="title"]') as HTMLInputElement;
+        const codeArea = formRef.current.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
+        const langSelect = formRef.current.querySelector('select[name="language"]') as HTMLSelectElement;
+        
+        if (titleInput) titleInput.value = result.title;
+        if (codeArea) codeArea.value = result.code;
+        if (langSelect) {
+          // Check if the language is in our list, otherwise default to text
+          const langExists = POPULAR_LANGUAGES.some(l => l.value === result.language);
+          langSelect.value = langExists ? result.language : 'text';
+        }
+      }
+      setAiPrompt('');
+    } catch (error) {
+      console.error('AI Generation failed:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const formatCode = () => {
+    if (!formRef.current) return;
+    const codeArea = formRef.current.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
+    const langSelect = formRef.current.querySelector('select[name="language"]') as HTMLSelectElement;
+    let code = codeArea.value;
+    const lang = langSelect.value;
+
+    try {
+      if (lang === 'json') {
+        code = JSON.stringify(JSON.parse(code), null, indentSize);
+      } else {
+        // Advanced indentation and brace style logic
+        let indent = 0;
+        const lines = code.split('\n');
+        const formattedLines: string[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i].trim();
+          if (!line) {
+            formattedLines.push('');
+            continue;
+          }
+
+          // Handle closing braces
+          if (line.startsWith('}') || line.endsWith('}')) {
+            indent = Math.max(0, indent - 1);
+          }
+
+          // Apply indentation
+          let formattedLine = ' '.repeat(indent * indentSize) + line;
+
+          // Handle brace style
+          if (braceStyle === 'next-line' && line.endsWith('{') && !line.startsWith('{')) {
+            const parts = line.split('{');
+            const beforeBrace = parts[0].trim();
+            formattedLine = ' '.repeat(indent * indentSize) + beforeBrace + '\n' + ' '.repeat(indent * indentSize) + '{';
+          }
+
+          formattedLines.push(formattedLine);
+
+          // Handle opening braces
+          if (line.endsWith('{') || line.startsWith('{')) {
+            indent++;
+          }
+        }
+        code = formattedLines.join('\n');
+      }
+      codeArea.value = code;
+    } catch (e) {
+      console.error('Formatting failed', e);
     }
   };
 
@@ -281,6 +457,7 @@ export default function App() {
     
     if (activeTab === 'pinned') result = result.filter(s => s.isPinned);
     if (activeTab === 'favorites') result = result.filter(s => s.isFavorite);
+    if (activeTab === 'folder' && selectedFolderId) result = result.filter(s => s.folderId === selectedFolderId);
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -297,6 +474,14 @@ export default function App() {
   // Bubble Drag Logic
   const bubbleRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [hoveredSnippet, setHoveredSnippet] = useState<Snippet | null>(null);
+
+  useEffect(() => {
+    if (!isBubbleExpanded) {
+      setHoveredSnippet(null);
+    }
+  }, [isBubbleExpanded]);
 
   const exportSnippets = () => {
     const dataStr = JSON.stringify(snippets, null, 2);
@@ -492,11 +677,14 @@ export default function App() {
             />
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(['all', 'pinned', 'favorites'] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setSelectedFolderId(null);
+                }}
                 className={cn(
                   "px-4 py-2 rounded-xl text-sm font-medium transition-all",
                   activeTab === tab 
@@ -507,6 +695,42 @@ export default function App() {
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
+
+            <div className="w-px h-4 bg-zinc-800 mx-2" />
+
+            {folders.map((folder) => (
+              <div key={folder.id} className="flex items-center group">
+                <button
+                  onClick={() => {
+                    setActiveTab('folder');
+                    setSelectedFolderId(folder.id!);
+                  }}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2",
+                    activeTab === 'folder' && selectedFolderId === folder.id
+                      ? "bg-brand/10 text-brand border border-brand/20 shadow-lg" 
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
+                  )}
+                >
+                  <FolderIcon className="w-3.5 h-3.5" />
+                  {folder.name}
+                </button>
+                <button 
+                  onClick={() => deleteFolder(folder.id!)}
+                  className="w-0 overflow-hidden group-hover:w-6 group-hover:ml-1 text-zinc-600 hover:text-red-500 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+
+            <button
+              onClick={() => setIsFolderModalOpen(true)}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-zinc-500 hover:text-brand hover:bg-brand/5 transition-all flex items-center gap-2 border border-dashed border-zinc-800"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Folder
+            </button>
           </div>
         </div>
 
@@ -528,6 +752,12 @@ export default function App() {
                       <h3 className="font-semibold text-lg truncate">{snippet.title}</h3>
                       {snippet.isPinned && <Pin className="w-3 h-3 text-brand fill-brand" />}
                       {snippet.isFavorite && <Star className="w-3 h-3 text-amber-500 fill-amber-500" />}
+                      {snippet.folderId && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-800 rounded-md text-[10px] text-zinc-400 font-medium">
+                          <FolderIcon className="w-2.5 h-2.5" />
+                          {folders.find(f => f.id === snippet.folderId)?.name || 'Unknown'}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-zinc-500 uppercase tracking-wider">
@@ -666,7 +896,10 @@ export default function App() {
                       type="text"
                       placeholder="Search..."
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setHoveredSnippet(null);
+                      }}
                       className="w-full bg-black/40 border border-zinc-800 rounded-xl py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-brand/50 transition-colors"
                     />
                   </div>
@@ -682,7 +915,9 @@ export default function App() {
                       <button
                         key={snippet.id}
                         onClick={() => copyToClipboard(snippet)}
-                        className="w-full group flex items-center justify-between p-3 rounded-2xl hover:bg-zinc-800/50 transition-all text-left"
+                        onMouseEnter={() => setHoveredSnippet(snippet)}
+                        onMouseLeave={() => setHoveredSnippet(null)}
+                        className="w-full group relative flex items-center justify-between p-3 rounded-2xl hover:bg-zinc-800/50 transition-all text-left"
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -702,6 +937,44 @@ export default function App() {
                     ))
                   )}
                 </div>
+
+                <AnimatePresence>
+                  {hoveredSnippet && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="bg-black/40 border-t border-zinc-800 overflow-hidden"
+                    >
+                      <div className="p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Preview: {hoveredSnippet.title}</span>
+                          <span className="text-[10px] text-zinc-600 font-mono">{hoveredSnippet.language}</span>
+                        </div>
+                        <div className="max-h-24 overflow-hidden">
+                          <SyntaxHighlighter
+                            language={hoveredSnippet.language?.toLowerCase() || 'text'}
+                            style={vscDarkPlus}
+                            customStyle={{
+                              margin: 0,
+                              padding: '0.5rem',
+                              background: 'transparent',
+                              fontSize: '9px',
+                              lineHeight: '1.2',
+                            }}
+                            codeTagProps={{
+                              style: {
+                                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                              }
+                            }}
+                          >
+                            {hoveredSnippet.code.split('\n').slice(0, 5).join('\n') + (hoveredSnippet.code.split('\n').length > 5 ? '\n...' : '')}
+                          </SyntaxHighlighter>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div className="p-3 bg-black/20 border-t border-zinc-800 flex items-center justify-between">
                   <span className="text-[10px] text-zinc-600 font-mono tracking-tighter">
@@ -738,25 +1011,10 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-[2.5rem] shadow-2xl overflow-hidden"
+              className="relative w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  saveSnippet({
-                    title: formData.get('title') as string,
-                    code: formData.get('code') as string,
-                    language: formData.get('language') as string,
-                    description: formData.get('description') as string,
-                    tags: (formData.get('tags') as string).split(',').map(t => t.trim()).filter(Boolean),
-                    isPinned: editingSnippet?.isPinned || false,
-                    isFavorite: editingSnippet?.isFavorite || false,
-                  });
-                }}
-                className="p-8 space-y-6"
-              >
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-8 pb-0">
+                <div className="flex items-center justify-between mb-6">
                   <h2 className="text-2xl font-bold">{editingSnippet ? 'Edit Snippet' : 'New Snippet'}</h2>
                   <button 
                     type="button"
@@ -770,6 +1028,56 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* AI Generation Section */}
+                <div className="bg-brand/5 border border-brand/20 rounded-3xl p-4 mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-4 h-4 text-brand" />
+                    <span className="text-xs font-bold text-brand uppercase tracking-widest">Generate with AI</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      placeholder="e.g. 'React hook for local storage' or 'Python script to scrape a website'"
+                      className="flex-1 bg-black/40 border border-brand/10 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:border-brand/50 transition-colors"
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), generateWithAI())}
+                    />
+                    <button 
+                      type="button"
+                      onClick={generateWithAI}
+                      disabled={isGenerating || !aiPrompt.trim()}
+                      className="px-6 bg-brand text-white font-bold rounded-2xl hover:bg-brand-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isGenerating ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4" />
+                      )}
+                      Generate
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <form 
+                ref={formRef}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  saveSnippet({
+                    title: formData.get('title') as string,
+                    code: formData.get('code') as string,
+                    language: formData.get('language') as string,
+                    description: formData.get('description') as string,
+                    tags: (formData.get('tags') as string).split(',').map(t => t.trim()).filter(Boolean),
+                    isPinned: editingSnippet?.isPinned || false,
+                    isFavorite: editingSnippet?.isFavorite || false,
+                    folderId: formData.get('folderId') as string || undefined,
+                  });
+                }}
+                className="p-8 space-y-6"
+              >
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Title</label>
@@ -798,42 +1106,90 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Folder</label>
+                  <div className="flex gap-2">
+                    <select 
+                      name="folderId"
+                      defaultValue={editingSnippet?.folderId || ''}
+                      className="flex-1 bg-black/40 border border-zinc-800 rounded-2xl py-3 px-4 focus:outline-none focus:border-brand/50 transition-colors appearance-none cursor-pointer"
+                    >
+                      <option value="" className="bg-zinc-900">No Folder</option>
+                      {folders.map(folder => (
+                        <option key={folder.id} value={folder.id} className="bg-zinc-900">
+                          {folder.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button 
+                      type="button"
+                      onClick={() => setIsFolderModalOpen(true)}
+                      className="p-3 bg-zinc-800 rounded-2xl hover:bg-zinc-700 transition-colors"
+                      title="Create New Folder"
+                    >
+                      <FolderPlus className="w-6 h-6 text-zinc-400" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Code Content</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const form = document.querySelector('form') as HTMLFormElement;
-                        const codeArea = form.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
-                        const langSelect = form.querySelector('select[name="language"]') as HTMLSelectElement;
-                        let code = codeArea.value;
-                        const lang = langSelect.value;
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setIndentSize(2)}
+                          className={cn(
+                            "text-[10px] px-2 py-0.5 rounded transition-all",
+                            indentSize === 2 ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"
+                          )}
+                        >
+                          2 SPACES
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIndentSize(4)}
+                          className={cn(
+                            "text-[10px] px-2 py-0.5 rounded transition-all",
+                            indentSize === 4 ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"
+                          )}
+                        >
+                          4 SPACES
+                        </button>
+                      </div>
 
-                        try {
-                          if (lang === 'json') {
-                            code = JSON.stringify(JSON.parse(code), null, 2);
-                          } else {
-                            // Basic indentation logic for curly brace languages
-                            let indent = 0;
-                            code = code.split('\n')
-                              .map(line => {
-                                line = line.trim();
-                                if (line.endsWith('}') || line.startsWith('}')) indent = Math.max(0, indent - 1);
-                                const formatted = '  '.repeat(indent) + line;
-                                if (line.endsWith('{') || line.startsWith('{')) indent++;
-                                return formatted;
-                              })
-                              .join('\n');
-                          }
-                          codeArea.value = code;
-                        } catch (e) {
-                          console.error('Formatting failed', e);
-                        }
-                      }}
-                      className="text-[10px] font-bold text-brand hover:text-brand-hover uppercase tracking-tighter border border-brand/20 px-2 py-1 rounded-lg hover:bg-brand/5 transition-all"
-                    >
-                      Auto-Format
-                    </button>
+                      <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setBraceStyle('same-line')}
+                          className={cn(
+                            "text-[10px] px-2 py-0.5 rounded transition-all",
+                            braceStyle === 'same-line' ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"
+                          )}
+                        >
+                          {'{ SAME LINE'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBraceStyle('next-line')}
+                          className={cn(
+                            "text-[10px] px-2 py-0.5 rounded transition-all",
+                            braceStyle === 'next-line' ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"
+                          )}
+                        >
+                          {'{ NEXT LINE'}
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={formatCode}
+                        className="text-[10px] font-bold text-brand hover:text-brand-hover uppercase tracking-tighter border border-brand/20 px-2 py-1 rounded-lg hover:bg-brand/5 transition-all flex items-center gap-1"
+                      >
+                        <Settings2 className="w-3 h-3" />
+                        Format
+                      </button>
+                    </div>
                   </div>
                   <textarea 
                     required
@@ -881,6 +1237,60 @@ export default function App() {
                     className="flex-1 py-4 bg-zinc-800 text-white font-bold rounded-2xl hover:bg-zinc-700 transition-all"
                   >
                     Cancel
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Folder Creation Modal */}
+      <AnimatePresence>
+        {isFolderModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsFolderModalOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-[2rem] shadow-2xl overflow-hidden p-8"
+            >
+              <h2 className="text-xl font-bold mb-6">Create New Folder</h2>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                saveFolder(formData.get('folderName') as string);
+              }} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Folder Name</label>
+                  <input 
+                    required
+                    autoFocus
+                    name="folderName"
+                    placeholder="e.g. Work Projects"
+                    className="w-full bg-black/40 border border-zinc-800 rounded-2xl py-3 px-4 focus:outline-none focus:border-brand/50 transition-colors"
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsFolderModalOpen(false)}
+                    className="flex-1 py-3 bg-zinc-800 text-white font-bold rounded-2xl hover:bg-zinc-700 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-3 bg-brand text-white font-bold rounded-2xl hover:bg-brand-hover transition-all"
+                  >
+                    Create
                   </button>
                 </div>
               </form>

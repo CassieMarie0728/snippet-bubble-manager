@@ -11,6 +11,15 @@ export interface Snippet {
   lastCopiedAt?: string;
   createdAt: string;
   updatedAt: string;
+  folderId?: string;
+}
+
+export interface Folder {
+  id?: string;
+  name: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserProfile {

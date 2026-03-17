@@ -19,6 +19,15 @@ service cloud.firestore {
     //   - lastCopiedAt: string (optional, ISO 8601)
     //   - createdAt: string (required, ISO 8601)
     //   - updatedAt: string (required, ISO 8601)
+    //   - folderId: string (optional)
+    //
+    // Collection: folders
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 1-50 chars)
+    //   - ownerId: string (required, must match auth.uid)
+    //   - createdAt: string (required, ISO 8601)
+    //   - updatedAt: string (required, ISO 8601)
     //
     // ===============================================================
 
@@ -41,7 +50,7 @@ service cloud.firestore {
 
     function isValidSnippet(data) {
       let requiredFields = ['title', 'code', 'ownerId', 'createdAt', 'updatedAt'];
-      let allowedFields = ['title', 'code', 'ownerId', 'createdAt', 'updatedAt', 'language', 'description', 'tags', 'isFavorite', 'isPinned', 'lastCopiedAt'];
+      let allowedFields = ['title', 'code', 'ownerId', 'createdAt', 'updatedAt', 'language', 'description', 'tags', 'isFavorite', 'isPinned', 'lastCopiedAt', 'folderId'];
       
       return data.keys().hasAll(requiredFields) &&
              data.keys().hasOnly(allowedFields) &&
@@ -52,13 +61,31 @@ service cloud.firestore {
              (!('description' in data) || data.description is string) &&
              (!('tags' in data) || data.tags is list) &&
              (!('isFavorite' in data) || data.isFavorite is bool) &&
-             (!('isPinned' in data) || data.isPinned is bool);
+             (!('isPinned' in data) || data.isPinned is bool) &&
+             (!('folderId' in data) || data.folderId is string || data.folderId == null);
+    }
+
+    function isValidFolder(data) {
+      let requiredFields = ['name', 'ownerId', 'createdAt', 'updatedAt'];
+      let allowedFields = ['name', 'ownerId', 'createdAt', 'updatedAt'];
+      
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.ownerId == request.auth.uid;
     }
 
     match /snippets/{snippetId} {
       allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && (isValidSnippet(request.resource.data) || isAdmin());
       allow update: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin()) && isValidSnippet(request.resource.data);
+      allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
+    }
+
+    match /folders/{folderId} {
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && (isValidFolder(request.resource.data) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin()) && isValidFolder(request.resource.data);
       allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
     }
 

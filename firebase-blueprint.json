@@ -54,15 +54,49 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp of when the snippet was last updated."
+        },
+        "folderId": {
+          "type": "string",
+          "description": "The ID of the folder this snippet belongs to."
         }
       },
       "required": ["title", "code", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "A folder for organizing snippets.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the folder."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The UID of the user who owns this folder."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the folder was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the folder was last updated."
+        }
+      },
+      "required": ["name", "ownerId", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "snippets": {
       "schema": "Snippet",
       "description": "Collection of code snippets."
+    },
+    "folders": {
+      "schema": "Folder",
+      "description": "Collection of folders for organizing snippets."
     }
   }
 }
