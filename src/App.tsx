@@ -29,9 +29,11 @@ import {
   Sparkles,
   Wand2,
   Settings2,
-  RefreshCw
+  RefreshCw,
+  Book
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
+import { SNIPPET_TEMPLATES, SnippetTemplate } from './templates';
 import { 
   collection, 
   query, 
@@ -148,6 +150,7 @@ export default function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [indentSize, setIndentSize] = useState<2 | 4>(2);
   const [braceStyle, setBraceStyle] = useState<'same-line' | 'next-line'>('same-line');
+  const [showTemplates, setShowTemplates] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Auth Listener
@@ -375,6 +378,27 @@ export default function App() {
       codeArea.value = code;
     } catch (e) {
       console.error('Formatting failed', e);
+    }
+  };
+
+  const applyTemplate = (template: SnippetTemplate) => {
+    if (formRef.current) {
+      const titleInput = formRef.current.querySelector('input[name="title"]') as HTMLInputElement;
+      const codeArea = formRef.current.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
+      const langSelect = formRef.current.querySelector('select[name="language"]') as HTMLSelectElement;
+      const descInput = formRef.current.querySelector('input[name="description"]') as HTMLInputElement;
+      const tagsInput = formRef.current.querySelector('input[name="tags"]') as HTMLInputElement;
+
+      if (titleInput && template.title) titleInput.value = template.title;
+      if (codeArea && template.code) codeArea.value = template.code;
+      if (langSelect && template.language) {
+        const langExists = POPULAR_LANGUAGES.some(l => l.value === template.language);
+        langSelect.value = langExists ? template.language : 'text';
+      }
+      if (descInput && template.description) descInput.value = template.description;
+      if (tagsInput && template.tags) tagsInput.value = template.tags.join(', ');
+      
+      setShowTemplates(false);
     }
   };
 
@@ -1034,34 +1058,70 @@ export default function App() {
                 </div>
 
                 {/* AI Generation Section */}
-                <div className="bg-brand/5 border border-brand/20 rounded-3xl p-4 mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles className="w-4 h-4 text-brand" />
-                    <span className="text-xs font-bold text-brand uppercase tracking-widest">Generate with AI</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text"
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      placeholder="e.g. 'React hook for local storage' or 'Python script to scrape a website'"
-                      className="flex-1 bg-black/40 border border-brand/10 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:border-brand/50 transition-colors"
-                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), generateWithAI())}
-                    />
+                <div className="bg-brand/5 border border-brand/20 rounded-3xl p-4 mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-brand" />
+                      <span className="text-xs font-bold text-brand uppercase tracking-widest">Generate with AI</span>
+                    </div>
                     <button 
                       type="button"
-                      onClick={generateWithAI}
-                      disabled={isGenerating || !aiPrompt.trim()}
-                      className="px-6 bg-brand text-white font-bold rounded-2xl hover:bg-brand-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      onClick={() => setShowTemplates(!showTemplates)}
+                      className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 hover:text-brand transition-colors uppercase tracking-widest"
                     >
-                      {isGenerating ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-4 h-4" />
-                      )}
-                      Generate
+                      <Book className="w-3 h-3" />
+                      {showTemplates ? 'Hide Templates' : 'Use Template'}
                     </button>
                   </div>
+                  
+                  <AnimatePresence>
+                    {showTemplates ? (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-2 gap-2 pb-2">
+                          {SNIPPET_TEMPLATES.map((template) => (
+                            <button
+                              key={template.name}
+                              type="button"
+                              onClick={() => applyTemplate(template)}
+                              className="text-left p-3 bg-black/40 border border-zinc-800 rounded-2xl hover:border-brand/50 hover:bg-brand/5 transition-all group"
+                            >
+                              <div className="text-xs font-bold text-zinc-300 group-hover:text-brand transition-colors">{template.name}</div>
+                              <div className="text-[10px] text-zinc-500 mt-1 line-clamp-1">{template.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input 
+                          type="text"
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          placeholder="e.g. 'React hook for local storage' or 'Python script to scrape a website'"
+                          className="flex-1 bg-black/40 border border-brand/10 rounded-2xl py-3 px-4 text-sm focus:outline-none focus:border-brand/50 transition-colors"
+                          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), generateWithAI())}
+                        />
+                        <button 
+                          type="button"
+                          onClick={generateWithAI}
+                          disabled={isGenerating || !aiPrompt.trim()}
+                          className="px-6 bg-brand text-white font-bold rounded-2xl hover:bg-brand-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {isGenerating ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Wand2 className="w-4 h-4" />
+                          )}
+                          Generate
+                        </button>
+                      </div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 
