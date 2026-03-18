@@ -72,20 +72,11 @@ So yeah—this fixes that.
 
 ## 🖼 UI Preview
 
-```
-/docs/images/
-  ├── screenshot-1.png   (Main bubble view)
-  ├── screenshot-2.png   (Expanded panel)
-  ├── screenshot-3.png   (Snippet editor)
-```
-
-```markdown
 <p align="center">
-  <img src="./docs/screenshot-1.png" width="30%" />
-  <img src="./docs/screenshot-2.png" width="30%" />
-  <img src="./docs/screenshot-3.png" width="30%" />
+  <img src="./docs/images/screenshot-1.png" width="30%" />
+  <img src="./docs/images/screenshot-2.png" width="30%" />
+  <img src="./docs/images/screenshot-3.png" width="30%" />
 </p>
-```
 
 ---
 
