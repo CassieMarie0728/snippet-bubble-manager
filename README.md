@@ -70,12 +70,10 @@ So yeah—this fixes that.
 
 ---
 
-## 🖼 UI Preview (Drop Your Screenshots Here)
-
-> ⚠️ Replace these with actual screenshots once UI is ready
+## 🖼 UI Preview
 
 ```
-/docs/
+/docs/images/
   ├── screenshot-1.png   (Main bubble view)
   ├── screenshot-2.png   (Expanded panel)
   ├── screenshot-3.png   (Snippet editor)
