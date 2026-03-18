@@ -30,7 +30,9 @@ import {
   Wand2,
   Settings2,
   RefreshCw,
-  Book
+  Book,
+  Undo,
+  Redo
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { SNIPPET_TEMPLATES, SnippetTemplate } from './templates';
@@ -151,6 +153,10 @@ export default function App() {
   const [indentSize, setIndentSize] = useState<2 | 4>(2);
   const [braceStyle, setBraceStyle] = useState<'same-line' | 'next-line'>('same-line');
   const [showTemplates, setShowTemplates] = useState(false);
+  const [editorCode, setEditorCode] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isInternalChange = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Auth Listener
@@ -161,6 +167,52 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // History Management
+  useEffect(() => {
+    if (isAddModalOpen) {
+      const initialCode = editingSnippet?.code || '';
+      setEditorCode(initialCode);
+      setHistory([initialCode]);
+      setHistoryIndex(0);
+    }
+  }, [isAddModalOpen, editingSnippet]);
+
+  useEffect(() => {
+    if (isInternalChange.current) {
+      isInternalChange.current = false;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (editorCode !== history[historyIndex]) {
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push(editorCode);
+        if (newHistory.length > 50) newHistory.shift();
+        setHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [editorCode]);
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      isInternalChange.current = true;
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setEditorCode(history[newIndex]);
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      isInternalChange.current = true;
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setEditorCode(history[newIndex]);
+    }
+  };
 
   // Firestore Connection Test
   useEffect(() => {
@@ -309,13 +361,11 @@ export default function App() {
       
       if (formRef.current) {
         const titleInput = formRef.current.querySelector('input[name="title"]') as HTMLInputElement;
-        const codeArea = formRef.current.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
         const langSelect = formRef.current.querySelector('select[name="language"]') as HTMLSelectElement;
         
         if (titleInput) titleInput.value = result.title;
-        if (codeArea) codeArea.value = result.code;
+        setEditorCode(result.code);
         if (langSelect) {
-          // Check if the language is in our list, otherwise default to text
           const langExists = POPULAR_LANGUAGES.some(l => l.value === result.language);
           langSelect.value = langExists ? result.language : 'text';
         }
@@ -330,9 +380,8 @@ export default function App() {
 
   const formatCode = () => {
     if (!formRef.current) return;
-    const codeArea = formRef.current.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
     const langSelect = formRef.current.querySelector('select[name="language"]') as HTMLSelectElement;
-    let code = codeArea.value;
+    let code = editorCode;
     const lang = langSelect.value;
 
     try {
@@ -375,7 +424,7 @@ export default function App() {
         }
         code = formattedLines.join('\n');
       }
-      codeArea.value = code;
+      setEditorCode(code);
     } catch (e) {
       console.error('Formatting failed', e);
     }
@@ -384,13 +433,12 @@ export default function App() {
   const applyTemplate = (template: SnippetTemplate) => {
     if (formRef.current) {
       const titleInput = formRef.current.querySelector('input[name="title"]') as HTMLInputElement;
-      const codeArea = formRef.current.querySelector('textarea[name="code"]') as HTMLTextAreaElement;
       const langSelect = formRef.current.querySelector('select[name="language"]') as HTMLSelectElement;
       const descInput = formRef.current.querySelector('input[name="description"]') as HTMLInputElement;
       const tagsInput = formRef.current.querySelector('input[name="tags"]') as HTMLInputElement;
 
       if (titleInput && template.title) titleInput.value = template.title;
-      if (codeArea && template.code) codeArea.value = template.code;
+      if (template.code) setEditorCode(template.code);
       if (langSelect && template.language) {
         const langExists = POPULAR_LANGUAGES.some(l => l.value === template.language);
         langSelect.value = langExists ? template.language : 'text';
@@ -1246,6 +1294,27 @@ export default function App() {
                         </button>
                       </div>
 
+                      <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={undo}
+                          disabled={historyIndex <= 0}
+                          className="p-1 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-colors"
+                          title="Undo (Ctrl+Z)"
+                        >
+                          <Undo className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={redo}
+                          disabled={historyIndex >= history.length - 1}
+                          className="p-1 text-zinc-500 hover:text-white disabled:opacity-30 disabled:hover:text-zinc-500 transition-colors"
+                          title="Redo (Ctrl+Y)"
+                        >
+                          <Redo className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
                       <button
                         type="button"
                         onClick={formatCode}
@@ -1259,7 +1328,19 @@ export default function App() {
                   <textarea 
                     required
                     name="code"
-                    defaultValue={editingSnippet?.code}
+                    value={editorCode}
+                    onChange={(e) => setEditorCode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.ctrlKey || e.metaKey) {
+                        if (e.key === 'z') {
+                          e.preventDefault();
+                          undo();
+                        } else if (e.key === 'y') {
+                          e.preventDefault();
+                          redo();
+                        }
+                      }
+                    }}
                     rows={8}
                     placeholder="Paste your code here..."
                     className="w-full bg-black/40 border border-zinc-800 rounded-2xl py-4 px-4 font-mono text-sm focus:outline-none focus:border-brand/50 transition-colors resize-none"
