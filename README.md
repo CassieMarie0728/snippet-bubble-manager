@@ -1,25 +1,17 @@
-<div align="center">
-
 # 🫧 Snippet Bubble Manager
 
 ### ⚡ Your code. One click away. Always within reach.
-
-<br/>
 
 <!-- BADGES -->
 ![Status](https://img.shields.io/badge/status-active-success?style=for-the-badge)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-black?style=for-the-badge)
-![Built With](https://img.shields.io/badge/built%20with-React%20%7C%20Firebase%20%7C%20Vite-red?style=for-the-badge)
+![Built With](https://img.shields.io/badge/built%20with-React%20%7C%20Firebase%20%7C%20Vite%20%7C%20Google%20GenAI-red?style=for-the-badge)
 
 <br/>
 
 <!-- OPTIONAL BANNER -->
 <img src="./docs/images/banner.png" alt="Snippet Bubble Manager Banner" width="100%" />
-
-</div>
-
----
 
 ## 💀 What This Is
 
@@ -29,8 +21,6 @@ It doesn’t ask permission.
 It doesn’t get in your way.  
 It just sits there—ready to drop code into your clipboard faster than your brain can say *“where the hell did I put that?”*
 
----
-
 ## 🎯 Why You Built This (aka The Problem)
 
 - You copy the same snippets 1000 times
@@ -39,8 +29,6 @@ It just sits there—ready to drop code into your clipboard faster than your bra
 - Clipboard history apps aren’t built for developers
 
 So yeah—this fixes that.
-
----
 
 ## 🔥 Features That Actually Matter
 
@@ -68,7 +56,9 @@ So yeah—this fixes that.
 - Auth-secured ownership
 - Sync-ready foundation
 
----
+### 🤖 AI-Powered Code Completion
+- Integrated with Google GenAI for intelligent code suggestions.
+- Monaco Editor integration for a rich coding experience.
 
 ## 🖼 UI Preview
 
@@ -78,116 +68,115 @@ So yeah—this fixes that.
   <img src="./docs/images/screenshot-3.png" width="30%" />
 </p>
 
----
-
 ## 🧱 Tech Stack
 
-| Layer        | Tech                          |
-|-------------|-------------------------------|
-| Frontend     | React + TypeScript + Vite     |
-| Styling      | CSS                           |
-| Backend      | Firebase (Firestore)          |
-| Auth         | Firebase Authentication       |
-
----
+| Layer        | Tech                                  |
+|:-------------|:--------------------------------------|
+| Frontend     | React + TypeScript + Vite             |
+| Styling      | Tailwind CSS                          |
+| Backend      | Firebase (Firestore, Authentication)  |
+| AI           | Google GenAI                          |
+| Editor       | Monaco Editor                         |
 
 ## 📂 Project Structure
 
 ```
 snippet-bubble-manager/
+├── public/
 ├── src/
 │   ├── App.tsx
 │   ├── firebase.ts
 │   ├── types.ts
+│   ├── templates.ts
 │   ├── main.tsx
 │   └── index.css
-│
+├── docs/
+│   ├── images/
+│   │   ├── banner.png
+│   │   ├── icon.png
+│   │   ├── screenshot-1.png
+│   │   ├── screenshot-2.png
+│   │   └── screenshot-3.png
+├── firebase-applet-config.json
+├── firebase-blueprint.json
 ├── firestore.rules
 ├── index.html
+├── metadata.json
 ├── package.json
+├── package-lock.json
+├── tsconfig.json
 ├── vite.config.ts
-├── .env.example
-└── docs/
-    ├── banner.png
-    └── screenshots/
+└── .env.example
 ```
-
----
 
 ## 🚀 Getting Started
 
-### 1. Clone
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/snippet-bubble-manager.git
+git clone https://github.com/CassieMarie0728/snippet-bubble-manager.git
 cd snippet-bubble-manager
 ```
 
----
-
-### 2. Install
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
----
+### 3. Firebase Setup
 
-### 3. Environment Setup
+This project uses Firebase for backend services (Firestore and Authentication). The Firebase configuration is loaded from `firebase-applet-config.json`. Ensure this file is correctly configured with your Firebase project details.
 
-Create `.env.local`:
+For AI code completion, you will need a Google GenAI API key. Create a `.env.local` file in the root directory and add your API key:
 
 ```env
-VITE_FIREBASE_API_KEY=your_key_here
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=xxxx
-VITE_FIREBASE_APP_ID=xxxx
+GEMINI_API_KEY=your_google_genai_api_key_here
 ```
 
----
-
-### 4. Run
+### 4. Run the Development Server
 
 ```bash
 npm run dev
 ```
 
-Open → `http://localhost:5173`
+Open your browser to `http://localhost:3000` (or the port specified by Vite).
 
----
+## 🔐 Firestore Rules
 
-## 🔐 Firestore Rules (Don’t Screw This Up)
-
-- Users only access their own snippets
-- `ownerId === auth.uid`
-- No public free-for-all data chaos
-
----
+Firestore security rules ensure that users can only access and manage their own snippets and folders. The rules enforce `ownerId === request.auth.uid` for all read/write operations on user-specific data. An admin override is available for the email `cmcrossno@gmail.com`.
 
 ## 🧠 Data Model
 
-```ts
-{
-  title: string
-  code: string
-  language?: string
-  description?: string
-  tags?: string[]
-  isFavorite?: boolean
-  isPinned?: boolean
-  ownerId: string
-  lastCopiedAt?: string
-  createdAt: string
-  updatedAt: string
-  folderId?: string
-}
-```
+### Snippet
 
----
+| Field        | Type      | Description                                                               |
+|:-------------|:----------|:--------------------------------------------------------------------------|
+| `id`         | `string`  | Unique identifier for the snippet (optional for creation)                 |
+| `title`      | `string`  | Title of the snippet                                                      |
+| `code`       | `string`  | The actual code snippet content                                           |
+| `language`   | `string`  | Programming language of the snippet (e.g., `javascript`, `python`)        |
+| `description`| `string`  | Optional description of the snippet                                       |
+| `tags`       | `string[]`| Optional array of tags for categorization                                 |
+| `isFavorite` | `boolean` | Flag indicating if the snippet is marked as a favorite                    |
+| `isPinned`   | `boolean` | Flag indicating if the snippet is pinned for quick access                 |
+| `ownerId`    | `string`  | User ID of the snippet's owner                                            |
+| `lastCopiedAt`| `string` | Timestamp of when the snippet was last copied                             |
+| `createdAt`  | `string`  | Timestamp of when the snippet was created                                 |
+| `updatedAt`  | `string`  | Timestamp of when the snippet was last updated                            |
+| `folderId`   | `string`  | Optional ID of the folder the snippet belongs to                          |
 
-## 🧨 Roadmap (Where This Gets Dangerous)
+### Folder
+
+| Field        | Type      | Description                                                               |
+|:-------------|:----------|:--------------------------------------------------------------------------|
+| `id`         | `string`  | Unique identifier for the folder (optional for creation)                  |
+| `name`       | `string`  | Name of the folder                                                        |
+| `ownerId`    | `string`  | User ID of the folder's owner                                             |
+| `createdAt`  | `string`  | Timestamp of when the folder was created                                  |
+| `updatedAt`  | `string`  | Timestamp of when the folder was last updated                             |
+
+## 🧨 Roadmap
 
 - 🧲 Global hotkeys (summon the bubble instantly)
 - 🖥 Desktop app (Electron or Tauri)
@@ -196,23 +185,17 @@ Open → `http://localhost:5173`
 - ☁️ Multi-device sync dashboard
 - 🎯 Context-aware snippets (language detection, auto-suggest)
 
----
-
 ## ⚠️ Known Limitations
 
 - No offline mode (yet)
 - UI still evolving
 - Firebase required (don’t argue with reality)
 
----
-
 ## 🧪 Dev Notes
 
 - Built fast, iterated faster
 - Designed to stay lightweight
 - Structured for future expansion into a full dev tool ecosystem
-
----
 
 ## 🖤 Philosophy
 
@@ -223,13 +206,9 @@ You built this because:
 - Repetition is stupid
 - And your brain has better things to do than remember where a snippet lives
 
----
-
 ## 📜 License
 
 MIT — do whatever you want, just don’t be an idiot about it.
-
----
 
 ## 🧠 Final Thought
 
