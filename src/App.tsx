@@ -50,6 +50,7 @@ import {
 } from 'firebase/firestore';
 import { 
   signInWithRedirect, 
+  getRedirectResult,
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
@@ -203,12 +204,24 @@ export default function App() {
   const completionProviderRef = useRef<any>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Auth Listener
+  // Auth Listener + Redirect Result Handling
   useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log('Google redirect sign-in successful:', result.user.email);
+        }
+      })
+      .catch((error) => {
+        console.error('Redirect result failed:', error);
+        alert(`Redirect sign-in failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsAuthReady(true);
     });
+
     return () => unsubscribe();
   }, []);
 
@@ -391,11 +404,9 @@ export default function App() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      console.log('Starting Google redirect sign-in...');
-      await signInWithRedirect(auth, provider);
+      await signInWithPopup(auth, provider);
     } catch (error) {
       console.error('Login failed:', error);
-      alert(`Login failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
