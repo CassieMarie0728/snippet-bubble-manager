@@ -34,7 +34,6 @@ import {
   Undo,
   Redo
 } from 'lucide-react';
-import { Type } from "@google/genai";
 import { SNIPPET_TEMPLATES, SnippetTemplate } from './templates';
 import { 
   collection, 
@@ -95,6 +94,47 @@ const POPULAR_LANGUAGES = [
   { label: 'Perl', value: 'perl' },
   { label: 'Lua', value: 'lua' },
 ];
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:10000';
+
+async function fetchAICompletion(context: string, language: string) {
+  const response = await fetch(`${API_BASE_URL}/api/gemini/complete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      context,
+      language,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI completion request failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (data.text || '').trim();
+}
+
+async function generateSnippetFromPrompt(prompt: string) {
+  const response = await fetch(`${API_BASE_URL}/api/gemini/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt: `Generate a code snippet for: ${prompt}. Return ONLY a JSON object with "code", "language", and "title" fields. The "language" should be a lowercase string (e.g., "javascript", "python"). The "title" should be a short, descriptive title for the snippet.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI generation request failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return JSON.parse(data.text);
+}
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -247,22 +287,7 @@ export default function App() {
         if (textUntilPosition.length < 10) return { suggestions: [] };
 
         try {
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `You are a code completion assistant. Given the following code context, suggest the next few lines or a completion for the current line.
-            Context:
-            \`\`\`${selectedLanguage}
-            ${textUntilPosition}
-            \`\`\`
-            Return ONLY the suggested code completion as a string. Do not include markdown blocks or explanations.`,
-            config: {
-              temperature: 0.2,
-              maxOutputTokens: 100,
-            }
-          });
-
-          const completion = response.text?.trim() || '';
+          const completion = await fetchAICompletion(textUntilPosition, selectedLanguage);
           if (!completion) return { suggestions: [] };
 
           return {
@@ -417,28 +442,7 @@ export default function App() {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Generate a code snippet for: ${aiPrompt}. 
-        Return ONLY a JSON object with "code", "language", and "title" fields. 
-        The "language" should be a lowercase string (e.g., "javascript", "python").
-        The "title" should be a short, descriptive title for the snippet.`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              code: { type: Type.STRING },
-              language: { type: Type.STRING },
-              title: { type: Type.STRING }
-            },
-            required: ["code", "language", "title"]
-          }
-        }
-      });
-
-      const result = JSON.parse(response.text);
+      const result = await generateSnippetFromPrompt(aiPrompt);
       
       if (formRef.current) {
         const titleInput = formRef.current.querySelector('input[name="title"]') as HTMLInputElement;
