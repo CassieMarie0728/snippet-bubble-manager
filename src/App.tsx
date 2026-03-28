@@ -49,7 +49,7 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { 
-  signInWithPopup, 
+  signInWithRedirect, 
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
