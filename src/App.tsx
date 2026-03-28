@@ -391,9 +391,11 @@ export default function App() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      console.log('Starting Google redirect sign-in...');
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error('Login failed:', error);
+      alert(`Login failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
