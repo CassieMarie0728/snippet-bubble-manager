@@ -1,0 +1,15 @@
+services:
+  snippet-bubble-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: snippet-bubble-manager
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
