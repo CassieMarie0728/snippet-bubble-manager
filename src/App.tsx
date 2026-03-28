@@ -34,7 +34,7 @@ import {
   Undo,
   Redo
 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import { SNIPPET_TEMPLATES, SnippetTemplate } from './templates';
 import { 
   collection, 
