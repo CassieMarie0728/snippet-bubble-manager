@@ -13,6 +13,10 @@ service cloud.firestore {
     //   - language: string (optional, 0-50 chars)
     //   - description: string (optional, 0-500 chars)
     //   - tags: list (optional, max 10 items, each string < 30 chars)
+    //   - labels: list (optional, max 10 items, each string < 30 chars)
+    //   - platform: string (optional, 0-30 chars)
+    //   - framework: string (optional, 0-30 chars)
+    //   - complexity: string (optional, S/M/L)
     //   - isFavorite: bool (optional)
     //   - isPinned: bool (optional)
     //   - ownerId: string (required, must match auth.uid)
@@ -20,14 +24,45 @@ service cloud.firestore {
     //   - createdAt: string (required, ISO 8601)
     //   - updatedAt: string (required, ISO 8601)
     //   - folderId: string (optional)
+    //   - customOrder: number (optional)
     //
     // Collection: folders
     // Document ID: auto-generated
     // Fields:
     //   - name: string (required, 1-50 chars)
+    //   - color: string (optional)
+    //   - icon: string (optional)
     //   - ownerId: string (required, must match auth.uid)
     //   - createdAt: string (required, ISO 8601)
     //   - updatedAt: string (required, ISO 8601)
+    //
+    // Collection: smartFolders
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 1-50 chars)
+    //   - rules: map (required)
+    //   - color: string (optional)
+    //   - icon: string (optional)
+    //   - ownerId: string (required, must match auth.uid)
+    //   - createdAt: string (required, ISO 8601)
+    //   - updatedAt: string (required, ISO 8601)
+    //
+    // Collection: presets
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 1-50 chars)
+    //   - title: string (optional)
+    //   - language: string (optional)
+    //   - description: string (optional)
+    //   - tags: list (optional)
+    //   - labels: list (optional)
+    //   - platform: string (optional)
+    //   - framework: string (optional)
+    //   - complexity: string (optional)
+    //   - folderId: string (optional)
+    //   - ownerId: string (required)
+    //   - createdAt: string (required)
+    //   - updatedAt: string (required)
     //
     // ===============================================================
 
@@ -50,28 +85,75 @@ service cloud.firestore {
 
     function isValidSnippet(data) {
       let requiredFields = ['title', 'code', 'ownerId', 'createdAt', 'updatedAt'];
-      let allowedFields = ['title', 'code', 'ownerId', 'createdAt', 'updatedAt', 'language', 'description', 'tags', 'isFavorite', 'isPinned', 'lastCopiedAt', 'folderId'];
+      let allowedFields = ['title', 'code', 'ownerId', 'createdAt', 'updatedAt', 'language', 'description', 'tags', 'labels', 'platform', 'framework', 'complexity', 'isFavorite', 'isPinned', 'lastCopiedAt', 'folderId', 'customOrder'];
       
       return data.keys().hasAll(requiredFields) &&
              data.keys().hasOnly(allowedFields) &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
              data.code is string && data.code.size() > 0 && data.code.size() <= 10000 &&
              data.ownerId == request.auth.uid &&
-             (!('language' in data) || data.language is string) &&
-             (!('description' in data) || data.description is string) &&
-             (!('tags' in data) || data.tags is list) &&
+             (!('language' in data) || (data.language is string && data.language.size() <= 50)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 10 && data.tags.hasOnly(data.tags) &&
+               data.tags.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('labels' in data) || (data.labels is list && data.labels.size() <= 10 && data.labels.hasOnly(data.labels) &&
+               data.labels.all(l => l is string && l.size() > 0 && l.size() <= 30))) &&
+             (!('platform' in data) || (data.platform is string && data.platform.size() <= 30)) &&
+             (!('framework' in data) || (data.framework is string && data.framework.size() <= 30)) &&
+             (!('complexity' in data) || (data.complexity is string && (data.complexity == 'S' || data.complexity == 'M' || data.complexity == 'L'))) &&
              (!('isFavorite' in data) || data.isFavorite is bool) &&
              (!('isPinned' in data) || data.isPinned is bool) &&
-             (!('folderId' in data) || data.folderId is string || data.folderId == null);
+             (!('folderId' in data) || data.folderId is string || data.folderId == null) &&
+             (!('customOrder' in data) || data.customOrder is number);
     }
 
     function isValidFolder(data) {
       let requiredFields = ['name', 'ownerId', 'createdAt', 'updatedAt'];
-      let allowedFields = ['name', 'ownerId', 'createdAt', 'updatedAt'];
+      let allowedFields = ['name', 'ownerId', 'createdAt', 'updatedAt', 'color', 'icon'];
       
       return data.keys().hasAll(requiredFields) &&
              data.keys().hasOnly(allowedFields) &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidSmartFolder(data) {
+      let requiredFields = ['name', 'rules', 'ownerId', 'createdAt', 'updatedAt'];
+      let allowedFields = ['name', 'rules', 'ownerId', 'createdAt', 'updatedAt', 'color', 'icon'];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             data.rules is map &&
+             (!('tagsAll' in data.rules) || (data.rules.tagsAll is list && data.rules.tagsAll.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('tagsAny' in data.rules) || (data.rules.tagsAny is list && data.rules.tagsAny.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('labelsAll' in data.rules) || (data.rules.labelsAll is list && data.rules.labelsAll.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('labelsAny' in data.rules) || (data.rules.labelsAny is list && data.rules.labelsAny.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('languages' in data.rules) || (data.rules.languages is list && data.rules.languages.all(t => t is string && t.size() > 0 && t.size() <= 50))) &&
+             (!('frameworks' in data.rules) || (data.rules.frameworks is list && data.rules.frameworks.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('platforms' in data.rules) || (data.rules.platforms is list && data.rules.platforms.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('complexities' in data.rules) || (data.rules.complexities is list && data.rules.complexities.all(c => c is string && (c == 'S' || c == 'M' || c == 'L')))) &&
+             (!('favoritesOnly' in data.rules) || data.rules.favoritesOnly is bool) &&
+             (!('pinnedOnly' in data.rules) || data.rules.pinnedOnly is bool) &&
+             data.ownerId == request.auth.uid;
+    }
+
+    function isValidPreset(data) {
+      let requiredFields = ['name', 'ownerId', 'createdAt', 'updatedAt'];
+      let allowedFields = ['name', 'ownerId', 'createdAt', 'updatedAt', 'title', 'language', 'description', 'tags', 'labels', 'platform', 'framework', 'complexity', 'folderId'];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 50 &&
+             (!('title' in data) || data.title is string) &&
+             (!('language' in data) || data.language is string) &&
+             (!('description' in data) || data.description is string) &&
+             (!('tags' in data) || (data.tags is list && data.tags.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('labels' in data) || (data.labels is list && data.labels.all(t => t is string && t.size() > 0 && t.size() <= 30))) &&
+             (!('platform' in data) || (data.platform is string && data.platform.size() <= 30)) &&
+             (!('framework' in data) || (data.framework is string && data.framework.size() <= 30)) &&
+             (!('complexity' in data) || (data.complexity is string && (data.complexity == 'S' || data.complexity == 'M' || data.complexity == 'L'))) &&
+             (!('folderId' in data) || data.folderId is string || data.folderId == null) &&
              data.ownerId == request.auth.uid;
     }
 
@@ -86,6 +168,20 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && (isValidFolder(request.resource.data) || isAdmin());
       allow update: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin()) && isValidFolder(request.resource.data);
+      allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
+    }
+
+    match /smartFolders/{smartFolderId} {
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && (isValidSmartFolder(request.resource.data) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin()) && isValidSmartFolder(request.resource.data);
+      allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
+    }
+
+    match /presets/{presetId} {
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && (isValidPreset(request.resource.data) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin()) && isValidPreset(request.resource.data);
       allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
     }
 
