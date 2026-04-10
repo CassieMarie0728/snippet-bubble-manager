@@ -11,7 +11,7 @@ The application follows a client-server architecture:
 - **Client-side (Frontend):** A React application built with TypeScript and Vite, styled using Tailwind CSS. It includes the main application logic (`App.tsx`), Firebase initialization (`firebase.ts`), type definitions (`types.ts`), and pre-defined snippet templates (`templates.ts`). The Monaco Editor is integrated for an enhanced code editing experience, with AI completion powered by Google GenAI.
 
 - **Server-side (Backend):** Primarily handled by Firebase services:
-    - **Firestore:** A NoSQL cloud database used for storing user-specific code snippets and folders. It provides real-time data synchronization and is secured by Firestore Rules.
+    - **Firestore:** A NoSQL cloud database used for storing user-specific code snippets, folders, smart folders, and presets. It provides real-time data synchronization and is secured by Firestore Rules.
     - **Firebase Authentication:** Manages user sign-in (Google OAuth) and provides authentication state for securing data access.
 
 ## 🌐 Cross-Repository Architecture & Integrations
@@ -31,10 +31,10 @@ This repository is designed as a self-contained application. However, it integra
 ## 🌊 Data Flow
 
 1.  **User Authentication:** Users sign in via Google Authentication. The `onAuthStateChanged` listener in `App.tsx` updates the application's user state.
-2.  **Data Retrieval:** Once authenticated, `App.tsx` establishes a real-time listener (`onSnapshot`) to Firestore, fetching snippets and folders owned by the current user (`ownerId === user.uid`). Data is ordered by `isPinned` and `updatedAt`.
+2.  **Data Retrieval:** Once authenticated, `App.tsx` establishes real-time listeners (`onSnapshot`) to Firestore, fetching snippets, folders, smart folders, and presets owned by the current user (`ownerId === user.uid`). Data is ordered by `isPinned` and `updatedAt` for snippets.
 3.  **Snippet Management:**
-    -   **Create/Update:** When a user creates or updates a snippet/folder, the data is sent to Firestore via `addDoc` or `updateDoc` calls. Timestamps (`createdAt`, `updatedAt`) and `ownerId` are automatically managed.
-    -   **Delete:** Snippets/folders are removed from Firestore using `deleteDoc`.
+    -   **Create/Update:** When a user creates or updates a snippet/folder/smart folder/preset, the data is sent to Firestore via `addDoc` or `updateDoc` calls. Timestamps (`createdAt`, `updatedAt`) and `ownerId` are automatically managed.
+    -   **Delete:** Snippets/folders/smart folders/presets are removed from Firestore using `deleteDoc`.
     -   **Pin/Favorite:** Status changes are updated in Firestore via `updateDoc`.
 4.  **AI Code Completion:** When the user types in the Monaco Editor, `App.tsx` sends the current code context and selected language to the Google GenAI API. The API returns code suggestions, which are then presented to the user by the Monaco Editor's completion provider.
 5.  **Data Import/Export:** Users can export their snippets as a JSON file or import snippets from a JSON file. Imported snippets are processed and added to Firestore with the current user's `ownerId`.

@@ -44,8 +44,12 @@ So yeah—this fixes that.
 
 ### 🧠 Smart Snippet Storage
 - Titles, descriptions, tags
+- Labels + metadata (platform, framework, complexity)
 - Language-aware organization
 - Favorites & pinned snippets
+- Smart folders (rule-based)
+- Presets for fast snippet creation
+- Export/import includes smart folders and presets
 
 ### 📁 Folder Organization
 - Keep your chaos contained
@@ -158,6 +162,10 @@ Firestore security rules ensure that users can only access and manage their own 
 | `language`   | `string`  | Programming language of the snippet (e.g., `javascript`, `python`)        |
 | `description`| `string`  | Optional description of the snippet                                       |
 | `tags`       | `string[]`| Optional array of tags for categorization                                 |
+| `labels`     | `string[]`| Optional array of labels for multi-collection organization                 |
+| `platform`   | `string`  | Optional platform label (e.g., `web`, `mobile`)                            |
+| `framework`  | `string`  | Optional framework label (e.g., `react`, `express`)                        |
+| `complexity` | `string`  | Optional complexity flag (`S`, `M`, `L`)                                   |
 | `isFavorite` | `boolean` | Flag indicating if the snippet is marked as a favorite                    |
 | `isPinned`   | `boolean` | Flag indicating if the snippet is pinned for quick access                 |
 | `ownerId`    | `string`  | User ID of the snippet's owner                                            |
@@ -165,6 +173,7 @@ Firestore security rules ensure that users can only access and manage their own 
 | `createdAt`  | `string`  | Timestamp of when the snippet was created                                 |
 | `updatedAt`  | `string`  | Timestamp of when the snippet was last updated                            |
 | `folderId`   | `string`  | Optional ID of the folder the snippet belongs to                          |
+| `customOrder`| `number`  | Optional custom sort order                                                 |
 
 ### Folder
 
@@ -172,9 +181,19 @@ Firestore security rules ensure that users can only access and manage their own 
 |:-------------|:----------|:--------------------------------------------------------------------------|
 | `id`         | `string`  | Unique identifier for the folder (optional for creation)                  |
 | `name`       | `string`  | Name of the folder                                                        |
+| `color`      | `string`  | Optional folder color                                                     |
+| `icon`       | `string`  | Optional folder icon id                                                   |
 | `ownerId`    | `string`  | User ID of the folder's owner                                             |
 | `createdAt`  | `string`  | Timestamp of when the folder was created                                  |
 | `updatedAt`  | `string`  | Timestamp of when the folder was last updated                             |
+
+### Smart Folders
+
+`smartFolders` are rule-based collections saved per user. Each smart folder stores a `rules` object with fields like `tagsAll`, `tagsAny`, `labelsAll`, `labelsAny`, `languages`, `frameworks`, `platforms`, `complexities`, plus `favoritesOnly` and `pinnedOnly` flags.
+
+### Presets
+
+`presets` are saved snippet creation templates. They can define title, language, tags, labels, platform, framework, complexity, and optional default folder.
 
 ## 🧨 Roadmap
 
