@@ -12,6 +12,7 @@ import {
   Minimize2, 
   LogOut, 
   Settings,
+  Smartphone,
   Code,
   Github,
   Terminal,
@@ -64,6 +65,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { db, auth } from './firebase';
 import { Snippet, Folder } from './types';
+import AndroidHub from './components/AndroidHub';
 
 // Popular languages for the dropdown
 const POPULAR_LANGUAGES = [
@@ -145,7 +147,7 @@ export default function App() {
   const [bubblePos, setBubblePos] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'all' | 'pinned' | 'favorites' | 'folder'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'pinned' | 'favorites' | 'folder' | 'android'>('all');
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -162,6 +164,7 @@ export default function App() {
   const monacoRef = useRef<any>(null);
   const completionProviderRef = useRef<any>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const requestRef = useRef<number | null>(null);
 
   // Auth Listener
   useEffect(() => {
@@ -683,6 +686,9 @@ export default function App() {
 
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     setIsDragging(true);
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+    }
   };
 
   const handleDrag = (e: MouseEvent | TouchEvent) => {
@@ -690,7 +696,6 @@ export default function App() {
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     
-    // Snap to edges logic could go here, but for now simple follow
     setBubblePos({
       x: window.innerWidth - clientX - 30,
       y: window.innerHeight - clientY - 30
@@ -699,6 +704,44 @@ export default function App() {
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    
+    const bubbleWidth = 56;
+    const padding = 20;
+    
+    const fromLeftX = window.innerWidth - bubblePos.x - bubbleWidth;
+    const middle = window.innerWidth / 2;
+    
+    let targetX = padding;
+    if (fromLeftX < middle) {
+      targetX = window.innerWidth - bubbleWidth - padding;
+    }
+    
+    const targetY = Math.max(padding, Math.min(window.innerHeight - bubbleWidth - padding, bubblePos.y));
+    
+    let currentX = bubblePos.x;
+    let currentY = bubblePos.y;
+    
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+    }
+    
+    const animateSnap = () => {
+      currentX += (targetX - currentX) * 0.2;
+      currentY += (targetY - currentY) * 0.2;
+      
+      setBubblePos({
+        x: Math.round(currentX),
+        y: Math.round(currentY)
+      });
+      
+      if (Math.abs(targetX - currentX) > 0.5 || Math.abs(targetY - currentY) > 0.5) {
+        requestRef.current = requestAnimationFrame(animateSnap);
+      } else {
+        setBubblePos({ x: targetX, y: targetY });
+      }
+    };
+    
+    requestRef.current = requestAnimationFrame(animateSnap);
   };
 
   useEffect(() => {
@@ -843,6 +886,24 @@ export default function App() {
 
             <div className="w-px h-4 bg-zinc-800 mx-2" />
 
+            <button
+              onClick={() => {
+                setActiveTab('android');
+                setSelectedFolderId(null);
+              }}
+              className={cn(
+                "px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 border",
+                activeTab === 'android' 
+                  ? "bg-brand/15 text-brand border-brand/30 shadow-lg" 
+                  : "bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border-zinc-800"
+              )}
+            >
+              <Smartphone className="w-3.5 h-3.5 text-brand" />
+              <span>Android Overlay Hub</span>
+            </button>
+
+            <div className="w-px h-4 bg-zinc-800 mx-1" />
+
             {folders.map((folder) => (
               <div key={folder.id} className="flex items-center group">
                 <button
@@ -879,8 +940,11 @@ export default function App() {
           </div>
         </div>
 
-        {/* Snippet Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Android Hub or Snippet Grid */}
+        {activeTab === 'android' ? (
+          <AndroidHub snippets={snippets} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <AnimatePresence mode="popLayout">
             {filteredSnippets.map((snippet) => (
               <motion.div
@@ -986,6 +1050,7 @@ export default function App() {
             ))}
           </AnimatePresence>
         </div>
+        )}
       </div>
 
       {/* Floating Bubble UI */}
