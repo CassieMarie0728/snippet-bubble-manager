@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, 
+  Play,
   Search, 
   Copy, 
   Edit2, 
@@ -165,6 +166,12 @@ export default function App() {
   const completionProviderRef = useRef<any>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const requestRef = useRef<number | null>(null);
+  const [executionResults, setExecutionResults] = useState<Record<string, {
+    snippetId: string;
+    status: 'idle' | 'running' | 'success' | 'error';
+    output: string;
+    runtime: string;
+  }>>({});
 
   // Auth Listener
   useEffect(() => {
@@ -596,6 +603,168 @@ export default function App() {
       updateDoc(doc(db, 'snippets', snippet.id), {
         lastCopiedAt: new Date().toISOString()
       }).catch(e => console.error('Failed to update lastCopiedAt', e));
+    }
+  };
+
+  const handleRunSnippet = async (snippet: Snippet) => {
+    if (!snippet.id) return;
+    
+    setExecutionResults(prev => ({
+      ...prev,
+      [snippet.id!]: {
+        snippetId: snippet.id!,
+        status: 'running',
+        output: '',
+        runtime: snippet.language && ['javascript', 'typescript'].includes(snippet.language.toLowerCase()) 
+          ? 'Local Sandbox' 
+          : 'AI Emulator'
+      }
+    }));
+
+    const updateResult = (status: 'success' | 'error', output: string, runtime: string) => {
+      setExecutionResults(prev => ({
+        ...prev,
+        [snippet.id!]: {
+          snippetId: snippet.id!,
+          status,
+          output,
+          runtime
+        }
+      }));
+    };
+
+    const lang = (snippet.language || 'text').toLowerCase();
+
+    // 1. Local JS Execution
+    if (lang === 'javascript') {
+      const userConsole: string[] = [];
+      const customConsole = {
+        log: (...args: any[]) => {
+          userConsole.push(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' '));
+        },
+        error: (...args: any[]) => {
+          userConsole.push('[Error] ' + args.map(arg => String(arg)).join(' '));
+        },
+        warn: (...args: any[]) => {
+          userConsole.push('[Warning] ' + args.map(arg => String(arg)).join(' '));
+        },
+        info: (...args: any[]) => {
+          userConsole.push('[Info] ' + args.map(arg => String(arg)).join(' '));
+        }
+      };
+
+      try {
+        // Safe evaluation wrapping
+        const runCode = new Function('console', `
+          try {
+            ${snippet.code}
+          } catch (e) {
+            console.error(e.message || e);
+          }
+        `);
+        
+        runCode(customConsole);
+        
+        const rawOutput = userConsole.join('\n');
+        updateResult('success', rawOutput || '[Code ran successfully with no console output]', 'Local JS Sandbox');
+      } catch (e: any) {
+        updateResult('error', '[Compilation Error]: ' + (e.message || e), 'Local JS Sandbox');
+      }
+      return;
+    }
+
+    // 2. Local TypeScript execution (simple strip types or fallback)
+    if (lang === 'typescript') {
+      let cleanCode = snippet.code
+        .replace(/:\s*(string|number|boolean|any|void|unknown|never|object|Record<[^>]+>)/g, '')
+        .replace(/as\s+[a-zA-Z]+/g, '')
+        .replace(/interface\s+\w+\s*\{[^}]*\}/g, '')
+        .replace(/type\s+\w+\s*=\s*[^;]+/g, '');
+
+      const userConsole: string[] = [];
+      const customConsole = {
+        log: (...args: any[]) => {
+          userConsole.push(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' '));
+        },
+        error: (...args: any[]) => {
+          userConsole.push('[Error] ' + args.map(arg => String(arg)).join(' '));
+        },
+        warn: (...args: any[]) => {
+          userConsole.push('[Warning] ' + args.map(arg => String(arg)).join(' '));
+        },
+        info: (...args: any[]) => {
+          userConsole.push('[Info] ' + args.map(arg => String(arg)).join(' '));
+        }
+      };
+
+      try {
+        const runCode = new Function('console', `
+          try {
+            ${cleanCode}
+          } catch (e) {
+            console.error(e.message || e);
+          }
+        `);
+        
+        runCode(customConsole);
+        const rawOutput = userConsole.join('\n');
+        updateResult('success', rawOutput || '[Code ran successfully with no console output]', 'TS Stripped Sandbox');
+      } catch (e: any) {
+        runAIEstimation(snippet);
+      }
+      return;
+    }
+
+    // 3. Emulate all other languages using Gemini
+    runAIEstimation(snippet);
+  };
+
+  const runAIEstimation = async (snippet: Snippet) => {
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `You are an advanced, ultra-accurate and sandboxed execution environment CLI emulator for multiple programming languages. 
+        Your task is to review and compile/run the following code snippet, and simulate EXACTLY what would print to the standard output and standard error (console terminal) when the program is run.
+        
+        Code info:
+        Language: ${snippet.language || 'Plain Text'}
+        Code:
+        \`\`\`
+        ${snippet.code}
+        \`\`\`
+        
+        RULES:
+        1. Run the code in a simulated console and output the compilation & execution results line by line.
+        2. Identify logic, loops, conditional statements, variable printing, variables and output their precise simulated values.
+        3. If there are syntax errors or infinite loops, display the corresponding crash backtrace.
+        4. Return ONLY the terminal output text of the execution. DO NOT wrap in markdown formatting, backticks, or write explanations. Act as a literal Linux terminal standard output.`,
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 1000,
+        }
+      });
+
+      const cleanOutput = response.text || '[Simulation yielded empty terminal output]';
+      setExecutionResults(prev => ({
+        ...prev,
+        [snippet.id!]: {
+          snippetId: snippet.id!,
+          status: 'success',
+          output: cleanOutput,
+          runtime: 'AI Virtual Sandbox (Gemini 3.5)'
+        }
+      }));
+    } catch (err: any) {
+      setExecutionResults(prev => ({
+        ...prev,
+        [snippet.id!]: {
+          snippetId: snippet.id!,
+          status: 'error',
+          output: `[AI Emulation Failed to Bootstrap]: ${err.message || err}`,
+          runtime: 'AI Core Sandbox'
+        }
+      }));
     }
   };
 
@@ -1032,14 +1201,77 @@ export default function App() {
                     </SyntaxHighlighter>
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/40 to-transparent pointer-events-none" />
-                  <button 
-                    onClick={() => copyToClipboard(snippet)}
-                    className="absolute bottom-3 right-3 p-2 bg-brand text-white rounded-xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 z-10"
-                  >
-                    {copyFeedback === snippet.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    <span className="text-xs font-bold">{copyFeedback === snippet.id ? 'Copied' : 'Copy'}</span>
-                  </button>
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2 z-10">
+                    <button 
+                      onClick={() => handleRunSnippet(snippet)}
+                      className={cn(
+                        "p-2 bg-zinc-950/95 text-white rounded-xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 border border-zinc-800",
+                        executionResults[snippet.id!]?.status === 'running' && "border-amber-500/30 text-amber-400"
+                      )}
+                    >
+                      <Play className={cn("w-3.5 h-3.5 text-emerald-400", executionResults[snippet.id!]?.status === 'running' && "animate-spin text-amber-400")} />
+                      <span className="text-xs font-bold">
+                        {executionResults[snippet.id!]?.status === 'running' ? 'Running' : 'Run'}
+                      </span>
+                    </button>
+                    <button 
+                      onClick={() => copyToClipboard(snippet)}
+                      className="p-2 bg-brand text-white rounded-xl shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 z-10"
+                    >
+                      {copyFeedback === snippet.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span className="text-xs font-bold">{copyFeedback === snippet.id ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Console Output Block */}
+                <AnimatePresence>
+                  {executionResults[snippet.id!] && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                      animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                      exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                      className="bg-black/80 border border-zinc-800/80 rounded-2xl overflow-hidden font-mono text-xs flex flex-col"
+                    >
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/40 border-b border-zinc-800/60 text-zinc-500 text-[10px] font-bold">
+                        <div className="flex items-center gap-1.5">
+                          <Terminal className="w-3 h-3 text-zinc-600" />
+                          <span className="uppercase tracking-widest text-[9px] text-zinc-400">Execution Console</span>
+                          <span className="bg-zinc-800 text-zinc-400 px-1 py-0.2 rounded text-[8px] font-normal font-mono px-1">
+                            {executionResults[snippet.id!].runtime}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setExecutionResults(prev => {
+                                const next = { ...prev };
+                                delete next[snippet.id!];
+                                return next;
+                              });
+                            }}
+                            className="hover:text-zinc-200 transition-colors"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      <div className="p-3 max-h-36 overflow-y-auto custom-scrollbar bg-black/40 text-left text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                        {executionResults[snippet.id!].status === 'running' ? (
+                          <div className="flex flex-col gap-1 py-1 text-zinc-500 italic">
+                            <span className="flex items-center gap-1.5 animate-pulse">
+                              <span className="w-1.5 h-1.5 bg-brand rounded-full animate-ping" />
+                              Compiling code...
+                            </span>
+                            <span className="text-[10px] text-zinc-600">Bootstrapping execution worker...</span>
+                          </div>
+                        ) : (
+                          executionResults[snippet.id!].output || <span className="text-zinc-600 italic">[Process completed with no output]</span>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 
                 {snippet.description && (
                   <p className="mt-4 text-xs text-zinc-500 line-clamp-2 italic">

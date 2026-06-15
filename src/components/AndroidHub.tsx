@@ -27,7 +27,7 @@ interface AndroidHubProps {
 }
 
 export default function AndroidHub({ snippets }: AndroidHubProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'kotlin' | 'manifest' | 'capacitor'>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'kotlin' | 'activity' | 'layout_xml' | 'manifest' | 'capacitor'>('overview');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   
   // Mobile simulator state
@@ -238,6 +238,112 @@ class SnippetBubbleService : Service() {
 
     </application>
 </manifest>`;
+
+  const mainActivityCode = `package com.snippetbubble.app
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
+import com.getcapacitor.BridgeActivity
+
+class MainActivity : BridgeActivity() {
+    companion object {
+        private const val OVERLAY_PERMISSION_REQ_CODE = 5469
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Request visual overlay permission on startup to display custom Chathead floating triggers
+        checkAndRequestOverlayPermission()
+    }
+
+    private fun checkAndRequestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivityForResult(intent, OVERLAY_PERMISSION_REQ_CODE)
+                Toast.makeText(
+                    this,
+                    "Overlay Draw-On-Top permissions are required for the Bubble helper",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                startBubbleService()
+            }
+        } else {
+            startBubbleService()
+        }
+    }
+
+    private fun startBubbleService() {
+        val serviceIntent = Intent(this, SnippetBubbleService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == OVERLAY_PERMISSION_REQ_CODE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Settings.canDrawOverlays(this)) {
+                    startBubbleService()
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Overlay permission was not granted.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+}`;
+
+  const layoutXmlCode = `<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- Elevating circular bubble floating layout -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/bubble_card"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="8dp"
+        app:cardBackgroundColor="#0CAFA0"> <!-- Styled with custom brand teal -->
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="?android:attr/selectableItemBackground">
+
+            <!-- Circular overlay display vector -->
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_menu_search"
+                android:contentDescription="Search Bubble"
+                app:tint="#FFFFFF" />
+        </FrameLayout>
+
+    </androidx.cardview.widget.CardView>
+</FrameLayout>`;
 
   const capacitorCode = `import { CapacitorConfig } from '@capacitor/cli';
 
@@ -458,6 +564,8 @@ export default config;`;
             {[
               { id: 'overview', label: 'Architecture', icon: Layers },
               { id: 'kotlin', label: 'SnippetBubbleService.kt', icon: FileCode },
+              { id: 'activity', label: 'MainActivity.kt', icon: Smartphone },
+              { id: 'layout_xml', label: 'layout_floating_bubble.xml', icon: Code },
               { id: 'manifest', label: 'AndroidManifest.xml', icon: Code },
               { id: 'capacitor', label: 'capacitor.config.ts', icon: Settings2 },
             ].map(tab => {
@@ -551,6 +659,60 @@ export default config;`;
                 </div>
                 <div className="bg-black/60 border border-zinc-800 rounded-2xl p-4 overflow-x-auto max-h-[380px] text-xs font-mono text-zinc-300 leading-relaxed custom-scrollbar">
                   <pre>{kotlinCode}</pre>
+                </div>
+              </div>
+            )}
+
+            {activeSubTab === 'activity' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs text-zinc-500 font-mono">
+                  <span>src/main/java/.../MainActivity.kt</span>
+                  <button 
+                    onClick={() => triggerCopy(mainActivityCode, 'activity')}
+                    className="flex items-center gap-1.5 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    {copiedText === 'activity' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="bg-black/60 border border-zinc-800 rounded-2xl p-4 overflow-x-auto max-h-[380px] text-xs font-mono text-zinc-300 leading-relaxed custom-scrollbar">
+                  <pre>{mainActivityCode}</pre>
+                </div>
+              </div>
+            )}
+
+            {activeSubTab === 'layout_xml' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-xs text-zinc-500 font-mono">
+                  <span>src/main/res/layout/layout_floating_bubble.xml</span>
+                  <button 
+                    onClick={() => triggerCopy(layoutXmlCode, 'layout_xml')}
+                    className="flex items-center gap-1.5 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    {copiedText === 'layout_xml' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="bg-black/60 border border-zinc-800 rounded-2xl p-4 overflow-x-auto max-h-[380px] text-xs font-mono text-zinc-300 leading-relaxed custom-scrollbar">
+                  <pre>{layoutXmlCode}</pre>
                 </div>
               </div>
             )}
